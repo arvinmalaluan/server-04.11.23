@@ -1,5 +1,5 @@
 from .serializers import *
-from .models import Account
+from .models import Account, Role
 
 import jwt
 import secrets
@@ -9,9 +9,13 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import generics
 
+
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.contrib.auth.hashers import check_password
+
+from . import functions
+from adminpage import for_emailing
 
 
 def create_token(data):
@@ -53,13 +57,35 @@ def login(request):
 
 @api_view(['POST'])
 def register(request):
-    serializer = UserAccountSerializer(data=request.data)
+    if isinstance(request.data, list):  # Check if it's a list
+        serializers = [UserAccountSerializer(
+            data=item) for item in request.data]
+        valid = all(serializer.is_valid() for serializer in serializers)
 
-    if serializer.is_valid():
-        serializer.save()
-        return Response({'success': 1})
+        if valid:
+            instances = [serializer.save() for serializer in serializers]
 
-    return Response({'success': 0, 'message': serializer.errors})
+            content = {
+                "target": request.data['email']
+            }
+
+            print(request.data['email'])
+
+            for_emailing.send_welcome_message(content)
+
+            return Response({'success': 1, 'data': UserAccountSerializer(instances, many=True).data})
+
+        errors = [
+            serializer.errors for serializer in serializers if not serializer.is_valid()]
+        return Response({'success': 0, 'message': errors})
+    else:
+        serializer = UserAccountSerializer(data=request.data)
+
+        if serializer.is_valid():
+            instance = serializer.save()
+            return Response({'success': 1, 'data': UserAccountSerializer(instance).data})
+
+        return Response({'success': 0, 'message': serializer.errors})
 
 
 @api_view(['POST'])
@@ -79,7 +105,6 @@ class getAccount(generics.RetrieveUpdateAPIView):
 def get_all_info(request):
     account = Account.objects.all()
     serializer = UserAccountSerializer(account, many=True).data
-
     return Response({'data': serializer})
 
 
@@ -104,3 +129,25 @@ def update_user_info(request):
 
     except Account.DoesNotExist:
         return Response({'success': 0, 'message': 'not found'})
+
+
+@api_view(['GET'])
+def create_admin(request):
+    Role.objects.create(role="admin")
+    Role.objects.create(role="seeker")
+    Role.objects.create(role="recruiter")
+
+    admin_data = {
+        "email": "test_admin@gmail.com",
+        "username": "admin",
+        "password": "admin",
+        "status": "verified",
+        "role": 1
+    }
+
+    serializer = UserAccountSerializer(data=admin_data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({'data': 'success'})
+    else:
+        return Response({"error": serializer.errors})

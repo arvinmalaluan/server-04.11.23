@@ -1,6 +1,10 @@
 from django.db import models
 from userFolder.models import Account
 
+from github import Github
+import base64
+from datetime import datetime
+
 
 class AllProfile(models.Model):
     account = models.IntegerField(primary_key=True, blank=True)
@@ -15,11 +19,40 @@ class AllProfile(models.Model):
     educational_attainment = models.CharField(
         max_length=255, null=True, blank=True)
 
-    emp_count = models.CharField(max_length=255, null=True, blank=True)
-    subsidiaries_count = models.CharField(
-        max_length=255, null=True, blank=True)
+    emp_count = models.IntegerField(
+        null=True, blank=True, default=0)
+    subsidiaries_count = models.IntegerField(
+        null=True, blank=True, default=0)
     comp_overview = models.CharField(max_length=255, null=True, blank=True)
     site_link = models.CharField(max_length=255, null=True, blank=True)
+    gender = models.CharField(max_length=255, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        image = str(self.photo)
+        super().save(*args, **kwargs)
+
+        g = Github("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")
+        repo = g.get_user().get_repo("github-as-static-assets-repository")
+
+        if image and not image.startswith('images'):
+
+            with open(self.photo.path, 'rb') as file:
+                content = file.read()
+
+            # Create a new file name
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            new_file_name = f"images/{self.fk.email.split('@')[0]}_photo_{timestamp}"
+
+            # Upload the file with the new name
+            repo.create_file(new_file_name,
+                             "uploading an image", base64.b64encode(content))
+
+            # Save the new file name to the model
+            self.photo.name = new_file_name
+        else:
+            print('hello')
+
+        super().save(*args, **kwargs)
 
     @classmethod
     def get_profiles_with_role(cls, role):
@@ -56,7 +89,7 @@ class Resume(models.Model):
     languages = models.CharField(max_length=255)
     hobbies_interest = models.CharField(max_length=255)
 
-    skill = models.CharField(max_length=255)
+    skill = models.TextField()
     proficiency = models.CharField(max_length=255)
 
     reward_name = models.CharField(max_length=255)
